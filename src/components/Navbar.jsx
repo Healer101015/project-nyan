@@ -1,16 +1,17 @@
 // src/components/Navbar.jsx
 import React, { useContext } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { AuthContext } from "../context/AuthContext";
+import { AuthContext } from "../context/AuthContext"; //
 import { MagnifyingGlassIcon } from "@heroicons/react/24/solid"; // (instale @heroicons/react)
 
 export default function Navbar() {
-  const { user, setUser } = useContext(AuthContext);
+  // <-- MUDANÇA AQUI: Trocamos 'setUser' por 'logout'
+  const { user, logout } = useContext(AuthContext); //
   const navigate = useNavigate();
 
+  // <-- MUDANÇA AQUI: Usamos a função 'logout' do contexto
   const handleLogout = () => {
-    setUser(null);
-    localStorage.removeItem("token");
+    logout(); //
     navigate("/login");
   };
 
@@ -54,7 +55,7 @@ export default function Navbar() {
                   {user.nome}
                 </Link>
                 <button
-                  onClick={handleLogout}
+                  onClick={handleLogout} //
                   className="text-gray-300 hover:text-white text-sm font-medium"
                 >
                   Sair

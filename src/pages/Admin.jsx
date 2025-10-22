@@ -1,210 +1,238 @@
-import React, { useState, useEffect, useContext } from 'react';
-import axios from 'axios';
-import { AuthContext } from '../context/AuthContext';
+// src/pages/Admin.jsx
+import React, { useState, useEffect } from "react";
+import axios from "axios";
+import { toast, ToastContainer } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
 
-const Admin = () => {
-    const { token } = useContext(AuthContext);
-    const [categories, setCategories] = useState([]);
+export default function Admin() {
+    // Estado para o formulário de Mangá
+    const [titulo, setTitulo] = useState("");
+    const [capa, setCapa] = useState("");
+    const [descricao, setDescricao] = useState("");
+    const [autor, setAutor] = useState("");
+    const [status, setStatus] = useState("Em Andamento");
+    const [categoriasSelecionadas, setCategoriasSelecionadas] = useState([]);
+    const [paginas, setPaginas] = useState(""); // Para URLs das páginas
 
-    // Estado para nova categoria
-    const [newCategoryName, setNewCategoryName] = useState("");
+    // Estado para o formulário de Categoria
+    const [nomeCategoria, setNomeCategoria] = useState("");
 
-    // Estado para novo mangá
-    const [mangaForm, setMangaForm] = useState({
-        title: "",
-        coverImage: "",
-        description: "",
-        author: "",
-        status: "Em Lançamento",
-        categories: [], // Array de IDs de categoria selecionados
-        pages: "" // String de URLs separadas por vírgula
-    });
+    // Estado para carregar as categorias existentes
+    const [categorias, setCategorias] = useState([]);
 
-    // Headers de autenticação
-    const authHeaders = { headers: { Authorization: `Bearer ${token}` } };
-
-    // Buscar categorias existentes
+    // Carrega as categorias existentes ao montar o componente
     useEffect(() => {
-        const fetchCategories = async () => {
+        const fetchCategorias = async () => {
             try {
-                const res = await axios.get('http://localhost:5001/api/categories');
-                setCategories(res.data);
+                const res = await axios.get("http://localhost:5001/api/mangas/categories");
+                setCategorias(res.data);
             } catch (error) {
                 console.error("Erro ao buscar categorias:", error);
             }
         };
-        fetchCategories();
+        fetchCategorias();
     }, []);
 
-    // Handler para adicionar categoria
+    // Handler para seleção de múltiplas categorias
+    const handleCategoriaChange = (e) => {
+        const options = e.target.options;
+        const value = [];
+        for (let i = 0, l = options.length; i < l; i++) {
+            if (options[i].selected) {
+                value.push(options[i].value);
+            }
+        }
+        setCategoriasSelecionadas(value);
+    };
+
+    // Handler para submeter um novo mangá
+    const handleMangaSubmit = async (e) => {
+        e.preventDefault();
+        try {
+            // Converte a string de URLs de páginas em um array
+            const paginasArray = paginas.split("\n").filter((url) => url.trim() !== "");
+
+            const novoManga = {
+                titulo,
+                capaUrl: capa,
+                descricao,
+                autor,
+                status,
+                categorias: categoriasSelecionadas,
+                paginas: paginasArray,
+            };
+
+            // O token JWT já está sendo enviado automaticamente pelo Axios (configurado no AuthContext)
+            const res = await axios.post(
+                "http://localhost:5001/api/admin/mangas",
+                novoManga
+            );
+            toast.success(`Mangá "${res.data.titulo}" adicionado com sucesso!`);
+
+            // Limpar campos
+            setTitulo("");
+            setCapa("");
+            setDescricao("");
+            setAutor("");
+            setStatus("Em Andamento");
+            setCategoriasSelecionadas([]);
+            setPaginas("");
+
+        } catch (error) {
+            console.error("Erro ao adicionar mangá:", error);
+            toast.error(
+                "Erro ao adicionar mangá: " +
+                (error.response?.data?.message || error.message)
+            );
+        }
+    };
+
+    // Handler para submeter uma nova categoria
     const handleCategorySubmit = async (e) => {
         e.preventDefault();
         try {
             const res = await axios.post(
-                'http://localhost:5001/api/admin/categories',
-                { name: newCategoryName },
-                authHeaders
+                "http://localhost:5001/api/admin/categories",
+                { nome: nomeCategoria }
             );
-            setCategories([...categories, res.data]);
-            setNewCategoryName("");
-            alert('Categoria adicionada!');
+            toast.success(`Categoria "${res.data.nome}" adicionada!`);
+
+            // Adiciona a nova categoria à lista e limpa o campo
+            setCategorias([...categorias, res.data]);
+            setNomeCategoria("");
+
         } catch (error) {
             console.error("Erro ao adicionar categoria:", error);
-            alert('Erro ao adicionar categoria.');
-        }
-    };
-
-    // Handler para mudança no formulário do mangá
-    const handleMangaChange = (e) => {
-        const { name, value } = e.target;
-        setMangaForm(prev => ({ ...prev, [name]: value }));
-    };
-
-    // Handler para selecionar categorias (checkboxes)
-    const handleCategorySelect = (catId) => {
-        setMangaForm(prev => {
-            const currentCategories = prev.categories;
-            if (currentCategories.includes(catId)) {
-                return { ...prev, categories: currentCategories.filter(id => id !== catId) };
-            } else {
-                return { ...prev, categories: [...currentCategories, catId] };
-            }
-        });
-    };
-
-    // Handler para adicionar mangá
-    const handleMangaSubmit = async (e) => {
-        e.preventDefault();
-
-        // Converte a string de páginas (separadas por vírgula/quebra de linha) em um array
-        const pagesArray = mangaForm.pages
-            .split(/[\n,]+/) // Divide por vírgula ou nova linha
-            .map(url => url.trim()) // Remove espaços em branco
-            .filter(url => url.length > 0); // Remove entradas vazias
-
-        if (pagesArray.length === 0) {
-            alert('Adicione pelo menos uma URL de página.');
-            return;
-        }
-
-        try {
-            const mangaData = {
-                ...mangaForm,
-                pages: pagesArray // Envia o array de páginas
-            };
-
-            await axios.post(
-                'http://localhost:5001/api/admin/mangas',
-                mangaData,
-                authHeaders
+            toast.error(
+                "Erro ao adicionar categoria: " +
+                (error.response?.data?.message || error.message)
             );
-
-            alert('Mangá adicionado com sucesso!');
-            // Limpa o formulário
-            setMangaForm({
-                title: "", coverImage: "", description: "", author: "",
-                status: "Em Lançamento", categories: [], pages: ""
-            });
-        } catch (error) {
-            console.error("Erro ao adicionar mangá:", error.response?.data || error.message);
-            alert('Erro ao adicionar mangá.');
         }
     };
 
-    // Estilos de Input (Tailwind)
-    const inputStyle = "w-full p-2 bg-gray-700 border border-gray-600 rounded mb-4";
-    const labelStyle = "block text-sm font-medium text-gray-300 mb-1";
 
     return (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+        <div className="bg-gray-900 min-h-screen text-white p-8">
+            <ToastContainer theme="dark" />
+            <div className="container mx-auto max-w-4xl">
+                <h1 className="text-3xl font-bold text-purple-400 mb-8">
+                    Painel de Administração
+                </h1>
 
-            {/* Seção de Adicionar Mangá */}
-            <section className="bg-gray-800 p-6 rounded-lg shadow-lg">
-                <h2 className="text-2xl font-bold mb-6">Adicionar Novo Mangá</h2>
-                <form onSubmit={handleMangaSubmit}>
-                    <label className={labelStyle} htmlFor="title">Título</label>
-                    <input type="text" name="title" value={mangaForm.title} onChange={handleMangaChange} className={inputStyle} required />
-
-                    <label className={labelStyle} htmlFor="coverImage">URL da Imagem de Capa</label>
-                    <input type="text" name="coverImage" value={mangaForm.coverImage} onChange={handleMangaChange} className={inputStyle} required />
-
-                    <label className={labelStyle} htmlFor="author">Autor</label>
-                    <input type="text" name="author" value={mangaForm.author} onChange={handleMangaChange} className={inputStyle} />
-
-                    <label className={labelStyle} htmlFor="description">Descrição</label>
-                    <textarea name="description" value={mangaForm.description} onChange={handleMangaChange} className={inputStyle} rows="4" required />
-
-                    <label className={labelStyle} htmlFor="status">Status</label>
-                    <select name="status" value={mangaForm.status} onChange={handleMangaChange} className={inputStyle}>
-                        <option value="Em Lançamento">Em Lançamento</option>
-                        <option value="Completo">Completo</option>
-                        <option value="Hiato">Hiato</option>
-                    </select>
-
-                    <label className={labelStyle}>Categorias</label>
-                    <div className="max-h-32 overflow-y-auto bg-gray-700 p-2 rounded mb-4 border border-gray-600">
-                        {categories.map(cat => (
-                            <div key={cat._id} className="flex items-center gap-2">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    {/* Formulário de Adicionar Mangá */}
+                    <div className="bg-gray-800 p-6 rounded-lg shadow-lg">
+                        <h2 className="text-2xl font-semibold mb-4">Adicionar Novo Mangá</h2>
+                        <form onSubmit={handleMangaSubmit} className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-300">Título</label>
                                 <input
-                                    type="checkbox"
-                                    id={cat._id}
-                                    checked={mangaForm.categories.includes(cat._id)}
-                                    onChange={() => handleCategorySelect(cat._id)}
+                                    type="text"
+                                    value={titulo}
+                                    onChange={(e) => setTitulo(e.target.value)}
+                                    required
+                                    className="w-full bg-gray-700 border border-gray-600 rounded-md px-3 py-2 mt-1 focus:outline-none focus:ring-2 focus:ring-purple-500"
                                 />
-                                <label htmlFor={cat._id}>{cat.name}</label>
                             </div>
-                        ))}
+                            <div>
+                                <label className="block text-sm font-medium text-gray-300">URL da Capa</label>
+                                <input
+                                    type="text"
+                                    value={capa}
+                                    onChange={(e) => setCapa(e.target.value)}
+                                    required
+                                    className="w-full bg-gray-700 border border-gray-600 rounded-md px-3 py-2 mt-1 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-300">Autor</label>
+                                <input
+                                    type="text"
+                                    value={autor}
+                                    onChange={(e) => setAutor(e.target.value)}
+                                    required
+                                    className="w-full bg-gray-700 border border-gray-600 rounded-md px-3 py-2 mt-1 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-300">Status</label>
+                                <select
+                                    value={status}
+                                    onChange={(e) => setStatus(e.target.value)}
+                                    className="w-full bg-gray-700 border border-gray-600 rounded-md px-3 py-2 mt-1 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                                >
+                                    <option value="Em Andamento">Em Andamento</option>
+                                    <option value="Concluído">Concluído</option>
+                                    <option value="Hiato">Hiato</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-300">Categorias (Segure Ctrl/Cmd para selecionar várias)</label>
+                                <select
+                                    multiple
+                                    value={categoriasSelecionadas}
+                                    onChange={handleCategoriaChange}
+                                    className="w-full h-32 bg-gray-700 border border-gray-600 rounded-md px-3 py-2 mt-1 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                                >
+                                    {categorias.map((cat) => (
+                                        <option key={cat._id} value={cat._id}>
+                                            {cat.nome}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-300">Descrição</label>
+                                <textarea
+                                    value={descricao}
+                                    onChange={(e) => setDescricao(e.target.value)}
+                                    rows="4"
+                                    className="w-full bg-gray-700 border border-gray-600 rounded-md px-3 py-2 mt-1 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                                ></textarea>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-300">URLs das Páginas (uma por linha)</label>
+                                <textarea
+                                    value={paginas}
+                                    onChange={(e) => setPaginas(e.target.value)}
+                                    rows="6"
+                                    placeholder="https://exemplo.com/pagina1.jpg&#10;https://exemplo.com/pagina2.jpg&#10;..."
+                                    className="w-full bg-gray-700 border border-gray-600 rounded-md px-3 py-2 mt-1 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                                ></textarea>
+                            </div>
+                            <button
+                                type="submit"
+                                className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-md transition duration-200"
+                            >
+                                Adicionar Mangá
+                            </button>
+                        </form>
                     </div>
 
-                    <label className={labelStyle} htmlFor="pages">
-                        Páginas (URLs)
-                        <span className="text-xs text-gray-400"> (Separe cada URL por vírgula ou nova linha)</span>
-                    </label>
-                    <textarea
-                        name="pages"
-                        value={mangaForm.pages}
-                        onChange={handleMangaChange}
-                        className={inputStyle}
-                        rows="6"
-                        placeholder="https://exemplo.com/pagina1.jpg,&#10;https://exemplo.com/pagina2.jpg"
-                        required
-                    />
-
-                    <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg">
-                        Adicionar Mangá
-                    </button>
-                </form>
-            </section>
-
-            {/* Seção de Adicionar Categoria */}
-            <section className="bg-gray-800 p-6 rounded-lg shadow-lg h-fit">
-                <h2 className="text-2xl font-bold mb-6">Adicionar Nova Categoria</h2>
-                <form onSubmit={handleCategorySubmit}>
-                    <label className={labelStyle} htmlFor="newCategoryName">Nome da Categoria</label>
-                    <input
-                        type="text"
-                        name="newCategoryName"
-                        value={newCategoryName}
-                        onChange={(e) => setNewCategoryName(e.target.value)}
-                        className={inputStyle}
-                        required
-                    />
-                    <button type="submit" className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-lg">
-                        Adicionar Categoria
-                    </button>
-                </form>
-
-                <h3 className="text-xl font-bold mt-8 mb-4">Categorias Existentes</h3>
-                <div className="flex flex-wrap gap-2">
-                    {categories.map(cat => (
-                        <span key={cat._id} className="bg-gray-700 px-3 py-1 rounded-full text-sm">
-                            {cat.name}
-                        </span>
-                    ))}
+                    {/* Formulário de Adicionar Categoria */}
+                    <div className="bg-gray-800 p-6 rounded-lg shadow-lg h-fit">
+                        <h2 className="text-2xl font-semibold mb-4">Adicionar Nova Categoria</h2>
+                        <form onSubmit={handleCategorySubmit} className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-300">Nome da Categoria</label>
+                                <input
+                                    type="text"
+                                    value={nomeCategoria}
+                                    onChange={(e) => setNomeCategoria(e.target.value)}
+                                    required
+                                    className="w-full bg-gray-700 border border-gray-600 rounded-md px-3 py-2 mt-1 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                                />
+                            </div>
+                            <button
+                                type="submit"
+                                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md transition duration-200"
+                            >
+                                Adicionar Categoria
+                            </button>
+                        </form>
+                    </div>
                 </div>
-            </section>
+            </div>
         </div>
     );
-};
-
-export default Admin;
+}
