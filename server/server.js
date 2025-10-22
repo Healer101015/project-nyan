@@ -1,404 +1,346 @@
-// server/server.js
-const express = require("express");
-const mongoose = require("mongoose");
-const cors = require("cors");
-const bcrypt = require("bcryptjs");
-const jwt = require("jsonwebtoken");
-const axios = require("axios"); // NOVO: Para a API do MyAnimeList
-
-// --- Importação dos Modelos ---
-// (Certifique-se que você criou estes arquivos em /models)
-const User = require("./models/User"); // Seu User.js atualizado (com nome, login, foto)
-const Manga = require("./models/Manga"); // Substitui o Product.js
-const Comment = require("./models/Comment"); // NOVO
-const Rating = require("./models/Rating"); // NOVO
-const Favorite = require("./models/Favorite"); // NOVO
+require('dotenv').config();
+const express = require('express');
+const mongoose = require('mongoose');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+const cors = require('cors');
+const axios = require('axios'); // Para a API do MAL
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-// --- Configuração Centralizada ---
-// (Idealmente, mova-os para um arquivo .env)
-const MONGO_URI = "mongodb://localhost:27017/project_nyan"; // Novo banco de dados
-const JWT_SECRET = "sua_chave_secreta_jwt_muito_forte"; // Mude isso!
-const ADMIN_EMAIL = "admin@nyan.com"; // Defina seu email de admin
-const MAL_API_KEY = "SUA_CHAVE_API_DO_MYANIMELIST_AQUI"; // NOVO: Pegue no site do MAL
+// Importar Modelos
+const User = require('./models/User');
+const Manga = require('./models/Manga');
+const Category = require('./models/Category');
+const Rating = require('./models/Rating');
+const Comment = require('./models/Comment');
+const Favorite = require('./models/Favorite');
 
-mongoose
-    .connect(MONGO_URI)
-    .then(() => console.log("MongoDB (Project Nyan) conectado."))
-    .catch((err) => console.error("Erro ao conectar no MongoDB:", err));
+// Conexão com o MongoDB
+mongoose.connect(process.env.MONGO_URI)
+    .then(() => console.log('MongoDB conectado'))
+    .catch(err => console.error(err));
 
-///////////////////////////
-// Middleware
-///////////////////////////
+// --- Middlewares ---
 
+// Middleware de autenticação (Verifica o Token JWT)
 const verifyToken = (req, res, next) => {
-    const authHeader = req.headers.authorization;
-    if (!authHeader) {
-        return res.status(401).json({ message: "Token não fornecido" });
-    }
-
-    const token = authHeader.split(" ")[1];
-    if (!token) {
-        return res.status(401).json({ message: "Token mal formatado" });
-    }
+    const token = req.headers['authorization']?.split(' ')[1]; // Bearer TOKEN
+    if (!token) return res.status(403).send('Token é necessário.');
 
     try {
-        const decoded = jwt.verify(token, JWT_SECRET);
-        req.user = decoded; // terá { id, email, nome }
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        req.user = decoded; // Adiciona os dados do usuário (id, email) ao req
         next();
     } catch (err) {
-        return res.status(403).json({ message: "Token inválido ou expirado" });
+        return res.status(401).send('Token inválido.');
     }
 };
 
-const isAdmin = (req, res, next) => {
-    // req.user é definido pelo middleware verifyToken
-    if (req.user.email !== ADMIN_EMAIL) {
-        return res.status(403).json({ message: "Acesso negado. Rota de administrador." });
-    }
-    next();
-};
-
-///////////////////////////
-// Rotas de Autenticação
-///////////////////////////
-
-// NOVO: Registro atualizado para incluir nome e login
-app.post("/api/register", async (req, res) => {
-    const { email, password, nome, login } = req.body;
-
-    if (!email || !password || !nome || !login) {
-        return res.status(400).json({ error: "Todos os campos são obrigatórios." });
-    }
-
+// Middleware de Admin
+const isAdmin = async (req, res, next) => {
     try {
-        // Checar se email ou login já existem
-        let user = await User.findOne({ $or: [{ email }, { login }] });
-        if (user) {
-            return res.status(400).json({ error: "Email ou login já cadastrado." });
+        const user = await User.findById(req.user.id);
+        // Verifica se o email do usuário logado é o email do admin no .env
+        if (user && user.email === process.env.ADMIN_EMAIL) {
+            next();
+        } else {
+            res.status(403).send('Acesso negado. Requer privilégios de administrador.');
         }
+    } catch (error) {
+        res.status(500).send('Erro ao verificar administrador.');
+    }
+};
 
+
+// --- Rotas de Autenticação (Login/Registro) ---
+
+app.post('/api/register', async (req, res) => {
+    try {
+        const { nome, email, login, password } = req.body;
         const hashedPassword = await bcrypt.hash(password, 10);
-        user = await User.create({
+
+        // Verifica se o email do admin está sendo usado para registrar
+        const isAdminUser = email === process.env.ADMIN_EMAIL;
+
+        const user = new User({
+            nome,
             email,
             login,
-            nome,
             password: hashedPassword,
-            // 'foto' usará o valor 'default' definido no Schema
+            isAdmin: isAdminUser // Define isAdmin no registro
         });
-
-        res.status(201).json({ message: "Usuário criado com sucesso!", userId: user._id });
+        await user.save();
+        res.status(201).send('Usuário registrado com sucesso.');
     } catch (error) {
-        console.error("Erro no registro:", error);
-        res.status(500).json({ error: "Erro ao registrar usuário" });
+        res.status(400).send('Erro ao registrar usuário. Verifique se o email ou login já existem.');
     }
 });
 
-// NOVO: Login atualizado para aceitar 'login' ou 'email'
-app.post("/api/login", async (req, res) => {
-    const { loginOrEmail, password } = req.body;
-
-    if (!loginOrEmail || !password) {
-        return res.status(400).json({ error: "Credenciais necessárias" });
-    }
-
+app.post('/api/login', async (req, res) => {
     try {
+        const { loginOrEmail, password } = req.body;
         const user = await User.findOne({
-            $or: [{ email: loginOrEmail }, { login: loginOrEmail }],
+            $or: [{ email: loginOrEmail }, { login: loginOrEmail }]
         });
 
-        if (!user || !(await bcrypt.compare(password, user.password))) {
-            return res.status(401).json({ error: "Credenciais inválidas" });
+        if (!user || !await bcrypt.compare(password, user.password)) {
+            return res.status(401).send('Login ou senha inválidos.');
         }
 
-        // Inclui mais dados no token para uso no frontend
         const token = jwt.sign(
-            { id: user._id, email: user.email, nome: user.nome, login: user.login },
-            JWT_SECRET,
-            { expiresIn: "1d" }
+            { id: user._id, email: user.email, isAdmin: user.email === process.env.ADMIN_EMAIL },
+            process.env.JWT_SECRET,
+            { expiresIn: '24h' }
         );
 
-        res.json({ token });
+        res.json({ token, user: { id: user._id, nome: user.nome, email: user.email, foto: user.foto, isAdmin: user.email === process.env.ADMIN_EMAIL } });
     } catch (error) {
-        console.error("Erro no login:", error);
-        res.status(500).json({ error: "Erro interno no servidor" });
+        res.status(500).send('Erro no servidor.');
     }
 });
 
-// Rota para verificar o token e pegar dados do usuário logado
-app.get("/api/me", verifyToken, async (req, res) => {
+
+// --- Rotas do Catálogo (Mangás) ---
+
+// Obter todos os mangás (Catálogo)
+app.get('/api/mangas', async (req, res) => {
     try {
-        const user = await User.findById(req.user.id).select("-password").lean(); // .lean() para objeto JS puro
-        if (!user) {
-            return res.status(404).json({ message: "Usuário não encontrado" });
-        }
-
-        const isAdmin = user.email === ADMIN_EMAIL;
-        res.json({ user: { ...user, isAdmin } });
-    } catch (error) {
-        res.status(500).json({ message: "Erro ao buscar dados do usuário" });
-    }
-});
-
-///////////////////////////
-// Rotas de Admin (Mangás)
-///////////////////////////
-
-// NOVO: Rota para admin adicionar mangás (substitui /admin/products)
-app.post("/api/admin/mangas", verifyToken, isAdmin, async (req, res) => {
-    try {
-        const { name, description, imageUrl, category, author, status, volumes, pages } = req.body;
-
-        if (!name || !category) {
-            return res.status(400).json({ message: "Nome e Categoria são obrigatórios" });
-        }
-
-        const newManga = new Manga({
-            name,
-            description,
-            imageUrl,
-            category,
-            author,
-            status,
-            volumes,
-            pages // Array de URLs das páginas para o leitor
-        });
-        await newManga.save();
-
-        res.status(201).json(newManga);
-    } catch (error) {
-        console.error("Erro ao criar mangá:", error);
-        res.status(500).json({ message: "Erro ao criar mangá" });
-    }
-});
-
-// TODO: Adicionar rotas para Admin (PUT, DELETE)
-// app.put("/api/admin/mangas/:id", verifyToken, isAdmin, ...);
-// app.delete("/api/admin/mangas/:id", verifyToken, isAdmin, ...);
-
-///////////////////////////
-// Rotas Públicas (Catálogo)
-///////////////////////////
-
-// Rota para listar todos os mangás no catálogo
-app.get("/api/mangas", async (req, res) => {
-    try {
-        const mangas = await Manga.find();
+        const mangas = await Manga.find().populate('categories');
         res.json(mangas);
-    } catch (err) {
-        res.status(500).json({ message: "Erro ao buscar mangás" });
+    } catch (error) {
+        res.status(500).send('Erro ao buscar mangás.');
     }
 });
 
-// NOVO: Rota para ver detalhes de um mangá específico (estilo Letterboxd)
-app.get("/api/mangas/:id", async (req, res) => {
+// Obter detalhes de um mangá (incluindo notas e comentários)
+app.get('/api/mangas/:id', async (req, res) => {
     try {
-        const manga = await Manga.findById(req.params.id);
-        if (!manga) {
-            return res.status(404).json({ message: "Mangá não encontrado" });
-        }
+        const manga = await Manga.findById(req.params.id).populate('categories');
+        if (!manga) return res.status(404).send('Mangá não encontrado.');
 
-        // Buscar dados relacionados
+        // Buscar comentários
         const comments = await Comment.find({ manga: req.params.id })
-            .populate("user", "nome foto login") // Puxa dados do usuário
+            .populate('user', 'nome foto') // Popula nome e foto do usuário
             .sort({ createdAt: -1 });
 
+        // Buscar notas e calcular média
         const ratings = await Rating.find({ manga: req.params.id });
+        const avgRating = ratings.length > 0
+            ? ratings.reduce((acc, r) => acc + r.score, 0) / ratings.length
+            : 0;
 
-        // Calcular nota média
-        let averageRating = 0;
-        if (ratings.length > 0) {
-            const sum = ratings.reduce((acc, r) => acc + r.score, 0);
-            averageRating = (sum / ratings.length).toFixed(1);
-        }
-
-        res.json({ manga, comments, ratings, averageRating });
-    } catch (err) {
-        console.error("Erro ao buscar detalhes do mangá:", err);
-        res.status(500).json({ message: "Erro ao buscar detalhes do mangá" });
+        res.json({ manga, comments, avgRating: avgRating.toFixed(1), totalRatings: ratings.length });
+    } catch (error) {
+        res.status(500).send('Erro ao buscar detalhes do mangá.');
     }
 });
 
-////////////////////////////////////////
-// Rotas de Interação (Requer Login)
-////////////////////////////////////////
+// Obter páginas do mangá (Leitor)
+app.get('/api/mangas/:id/read', async (req, res) => {
+    try {
+        // Opcional: Adicionar verifyToken se a leitura exigir login
+        const manga = await Manga.findById(req.params.id).select('title pages');
+        if (!manga || !manga.pages || manga.pages.length === 0) {
+            return res.status(404).send('Páginas não encontradas para este mangá.');
+        }
+        // Retorna as páginas ordenadas
+        res.json(manga);
+    } catch (error) {
+        res.status(500).send('Erro ao buscar páginas do mangá.');
+    }
+});
 
-// --- FAVORITOS ---
-app.post("/api/mangas/:id/favorite", verifyToken, async (req, res) => {
+
+// --- Rotas de Interação (Requer Login) ---
+
+// Favoritar/Desfavoritar
+app.post('/api/mangas/:id/favorite', verifyToken, async (req, res) => {
     try {
         const mangaId = req.params.id;
         const userId = req.user.id;
 
-        const existing = await Favorite.findOne({ manga: mangaId, user: userId });
+        const existingFavorite = await Favorite.findOne({ manga: mangaId, user: userId });
 
-        if (existing) {
-            // Se já existe, remove (toggle off)
-            await Favorite.findByIdAndDelete(existing._id);
-            res.json({ favorited: false, message: "Removido dos favoritos" });
+        if (existingFavorite) {
+            await Favorite.findByIdAndDelete(existingFavorite._id);
+            res.send('Removido dos favoritos.');
         } else {
-            // Se não existe, cria (toggle on)
-            await Favorite.create({ manga: mangaId, user: userId });
-            res.status(201).json({ favorited: true, message: "Adicionado aos favoritos" });
+            const favorite = new Favorite({ manga: mangaId, user: userId });
+            await favorite.save();
+            res.status(201).send('Adicionado aos favoritos.');
         }
-    } catch (err) {
-        res.status(500).json({ message: "Erro ao processar favorito" });
+    } catch (error) {
+        res.status(500).send('Erro ao processar favorito.');
     }
 });
 
-// --- NOTAS (RATINGS) ---
-app.post("/api/mangas/:id/rate", verifyToken, async (req, res) => {
+// Dar/Atualizar Nota
+app.post('/api/mangas/:id/rate', verifyToken, async (req, res) => {
     try {
         const mangaId = req.params.id;
         const userId = req.user.id;
-        const { score } = req.body; // Nota (ex: 8)
+        const { score, malScore } = req.body; // score (1-10), malScore (opcional)
 
-        if (!score || score < 1 || score > 10) {
-            return res.status(400).json({ message: "Nota deve ser um número entre 1 e 10." });
+        if (score < 1 || score > 10) {
+            return res.status(400).send('Nota deve ser entre 1 e 10.');
         }
 
-        // 'findOneAndUpdate' com 'upsert: true' atualiza a nota se existe, ou cria se não existe.
         const rating = await Rating.findOneAndUpdate(
             { manga: mangaId, user: userId },
-            { score: score },
-            { new: true, upsert: true }
+            { score, malScore },
+            { new: true, upsert: true } // Cria se não existir, atualiza se existir
         );
-
         res.status(201).json(rating);
-    } catch (err) {
-        res.status(500).json({ message: "Erro ao salvar nota" });
+    } catch (error) {
+        res.status(500).send('Erro ao salvar nota.');
     }
 });
 
-// --- COMENTÁRIOS ---
-app.post("/api/mangas/:id/comment", verifyToken, async (req, res) => {
+// Postar Comentário
+app.post('/api/mangas/:id/comment', verifyToken, async (req, res) => {
     try {
+        const mangaId = req.params.id;
+        const userId = req.user.id;
         const { content } = req.body;
-        if (!content || content.trim() === "") {
-            return res.status(400).json({ message: "Comentário não pode estar vazio." });
-        }
 
-        const comment = await Comment.create({
-            manga: req.params.id,
-            user: req.user.id,
-            content: content,
+        if (!content) return res.status(400).send('Comentário não pode estar vazio.');
+
+        const comment = new Comment({
+            manga: mangaId,
+            user: userId,
+            content
         });
+        await comment.save();
 
-        // Retorna o comentário já com os dados do usuário
-        const populatedComment = await Comment.findById(comment._id).populate(
-            "user",
-            "nome foto login"
-        );
+        // Popula o usuário antes de enviar de volta para o front-end
+        const newComment = await Comment.findById(comment._id).populate('user', 'nome foto');
 
-        res.status(201).json(populatedComment);
-    } catch (err) {
-        res.status(500).json({ message: "Erro ao criar comentário" });
+        res.status(201).json(newComment);
+    } catch (error) {
+        res.status(500).send('Erro ao postar comentário.');
     }
 });
 
-// --- VOTOS (UPVOTE/DOWNVOTE) ---
-app.post("/api/comments/:id/vote", verifyToken, async (req, res) => {
+// Votar em Comentário (Upvote/Downvote)
+app.post('/api/comments/:id/vote', verifyToken, async (req, res) => {
     try {
         const commentId = req.params.id;
         const userId = req.user.id;
-        const { voteType } = req.body; // "up" ou "down"
+        const { voteType } = req.body; // 'upvote' ou 'downvote'
 
         const comment = await Comment.findById(commentId);
-        if (!comment) {
-            return res.status(404).json({ message: "Comentário não encontrado." });
-        }
+        if (!comment) return res.status(404).send('Comentário não encontrado.');
 
-        const upvoted = comment.upvotes.includes(userId);
-        const downvoted = comment.downvotes.includes(userId);
-
-        if (voteType === "up") {
-            comment.downvotes.pull(userId); // Remove do downvote
-            if (upvoted) {
-                comment.upvotes.pull(userId); // Tira o upvote (neutral)
+        // Lógica de Upvote/Downvote (remove o oposto se existir, adiciona/remove o atual)
+        if (voteType === 'upvote') {
+            comment.downvotes.pull(userId); // Remove downvote se existir
+            const hasUpvoted = comment.upvotes.includes(userId);
+            if (hasUpvoted) {
+                comment.upvotes.pull(userId); // Remove upvote
             } else {
                 comment.upvotes.push(userId); // Adiciona upvote
             }
-        } else if (voteType === "down") {
-            comment.upvotes.pull(userId); // Remove do upvote
-            if (downvoted) {
-                comment.downvotes.pull(userId); // Tira o downvote (neutral)
+        } else if (voteType === 'downvote') {
+            comment.upvotes.pull(userId); // Remove upvote se existir
+            const hasDownvoted = comment.downvotes.includes(userId);
+            if (hasDownvoted) {
+                comment.downvotes.pull(userId); // Remove downvote
             } else {
                 comment.downvotes.push(userId); // Adiciona downvote
             }
         } else {
-            return res.status(400).json({ message: "Tipo de voto inválido" });
+            return res.status(400).send('Tipo de voto inválido.');
         }
 
         await comment.save();
-        res.json(comment); // Retorna o comentário atualizado com as contagens
-    } catch (err) {
-        res.status(500).json({ message: "Erro ao votar" });
-    }
-});
-
-///////////////////////////
-// Rotas de Perfil (Públicas)
-///////////////////////////
-
-// NOVO: Rota para ver o perfil de um usuário e suas atividades
-app.get("/api/profile/:login", async (req, res) => {
-    try {
-        // Busca o usuário pelo 'login' (username)
-        const user = await User.findOne({ login: req.params.login }).select("-password");
-        if (!user) {
-            return res.status(404).json({ message: "Usuário não encontrado." });
-        }
-
-        // Buscar atividades públicas desse usuário
-        const favorites = await Favorite.find({ user: user._id }).populate("manga", "name imageUrl");
-        const ratings = await Rating.find({ user: user._id }).populate("manga", "name imageUrl");
-        const comments = await Comment.find({ user: user._id }).populate("manga", "name");
-
-        res.json({ user, favorites, ratings, comments });
-    } catch (err) {
-        res.status(500).json({ message: "Erro ao buscar perfil." });
+        res.json(comment);
+    } catch (error) {
+        res.status(500).send('Erro ao votar.');
     }
 });
 
 
-///////////////////////////
-// Rota Externa (MyAnimeList)
-///////////////////////////
+// --- Rotas de Admin (Requer Login e Admin) ---
 
-// NOVO: Rota para recomendações (Melhores da Semana)
-app.get("/api/mal/top-weekly", async (req, res) => {
-    if (MAL_API_KEY === "SUA_CHAVE_API_DO_MYANIMELIST_AQUI") {
-        return res.status(500).json({ message: "API Key do MyAnimeList não configurada no servidor." });
-    }
-
+// Adicionar Mangá
+app.post('/api/admin/mangas', verifyToken, isAdmin, async (req, res) => {
     try {
-        // Exemplo: 'ranking_type=all' (pode ser 'manga', 'oneshots', etc.)
-        // 'fields' pede dados extras como a sinopse e a capa
-        const url = "https://api.myanimelist.net/v2/manga/ranking?ranking_type=all&limit=10&fields=main_picture,synopsis,num_chapters";
+        // Recebe 'pages' como um array de strings (URLs)
+        const { title, coverImage, description, author, status, categories, pages } = req.body;
 
-        const response = await axios.get(url, {
-            headers: { 'Authorization': `Bearer ${MAL_API_KEY}` } // A API v2 do MAL usa Bearer Token
+        const manga = new Manga({
+            title,
+            coverImage,
+            description,
+            author,
+            status,
+            categories, // Deve ser um array de IDs de Categoria
+            pages // Array de URLs das páginas
         });
 
-        // A API do MAL retorna os dados dentro de { data: [ { node: {...} }, ... ] }
-        const recommendations = response.data.data.map(item => item.node);
-
-        res.json(recommendations);
+        await manga.save();
+        res.status(201).json(manga);
     } catch (error) {
-        // Log detalhado do erro da API externa
-        console.error("Erro ao buscar dados do MAL:", error.response ? error.response.data : error.message);
-        res.status(500).json({ message: "Erro ao buscar recomendações do MAL." });
+        res.status(400).send('Erro ao adicionar mangá.');
+    }
+});
+
+// Adicionar Categoria
+app.post('/api/admin/categories', verifyToken, isAdmin, async (req, res) => {
+    try {
+        const { name } = req.body;
+        const category = new Category({ name });
+        await category.save();
+        res.status(201).json(category);
+    } catch (error) {
+        res.status(400).send('Erro ao adicionar categoria.');
+    }
+});
+
+// Obter todas as categorias (para o formulário de admin)
+app.get('/api/categories', async (req, res) => {
+    try {
+        const categories = await Category.find();
+        res.json(categories);
+    } catch (error) {
+        res.status(500).send('Erro ao buscar categorias.');
     }
 });
 
 
-///////////////////////////
-// Inicialização do Servidor
-///////////////////////////
+// --- Rota MyAnimeList (MAL) ---
 
-const PORT = process.env.PORT || 4000;
+// Recomendações (Melhores da Semana)
+app.get('/api/mal/weekly', async (req, res) => {
+    try {
+        // Esta é uma chamada de exemplo. A API do MAL (v2) usa OAuth 2.0.
+        // Para "melhores da semana", talvez você precise usar a API de ranking com 'ranking_type=airing' ou 'manga'
+        // A API Jikan (wrapper não oficial) pode ser mais fácil se você não quiser lidar com OAuth completo.
+
+        // Exemplo usando a API oficial (requer CLIENT_ID)
+        const response = await axios.get('https://api.myanimelist.net/v2/manga/ranking', {
+            params: {
+                ranking_type: 'publishing', // Ou 'manga' para all time
+                limit: 10
+            },
+            headers: {
+                'X-MAL-CLIENT-ID': process.env.MAL_CLIENT_ID
+            }
+        });
+
+        res.json(response.data.data); // Retorna os dados do ranking
+    } catch (error) {
+        console.error("Erro ao buscar MAL API:", error.response?.data || error.message);
+        res.status(500).send('Erro ao buscar recomendações do MyAnimeList.');
+    }
+});
+
+
+// --- Inicialização do Servidor ---
+const PORT = process.env.PORT || 5001;
 app.listen(PORT, () => {
-    console.log(`Servidor Project Nyan rodando na porta ${PORT}`);
+    console.log(`Servidor rodando na porta ${PORT}`);
 });

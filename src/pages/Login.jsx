@@ -1,98 +1,100 @@
-import { useState, useContext } from "react";
-import axios from "axios";
-import { useNavigate } from "react-router-dom";
-import { AuthContext } from "../context/AuthContext";
-import logo from "../assets/gatoa-logo.jpg"; // mesmo logo usado no site
+import React, { useState, useContext } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import axios from 'axios';
+import { AuthContext } from '../context/AuthContext'; // Importa o contexto
 
-export default function Login() {
-    const [email, setEmail] = useState("");
-    const [password, setPassword] = useState("");
-    const { setUser } = useContext(AuthContext);
+const Login = () => {
+    const [loginOrEmail, setLoginOrEmail] = useState('');
+    const [password, setPassword] = useState('');
+    const [error, setError] = useState('');
     const navigate = useNavigate();
+    const { login } = useContext(AuthContext); // Pega a função de login do contexto
 
-    const login = async (e) => {
+    const handleSubmit = async (e) => {
         e.preventDefault();
+        setError(''); // Limpa erros anteriores
+
         try {
-            const res = await axios.post("http://localhost:4000/api/login", {
-                email,
-                password,
-            });
-            localStorage.setItem("token", res.data.token);
-            localStorage.setItem("user", JSON.stringify(res.data.user));
-            setUser(res.data.user);
-            navigate("/");
-            setTimeout(() => {
-                window.location.reload();
-            }, 100);
-        } catch {
-            alert("Login inválido");
+            // A função login do AuthContext fará a chamada de API
+            await login(loginOrEmail, password);
+
+            // Redireciona para a Home após o login bem-sucedido
+            navigate('/');
+        } catch (err) {
+            console.error('Erro no login:', err);
+            // Define uma mensagem de erro amigável
+            setError(err.response?.data || 'Login ou senha inválidos.');
         }
     };
 
+    // Estilos (Tailwind)
+    const inputStyle = "w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500";
+    const labelStyle = "block text-sm font-medium text-gray-300 mb-2";
+
     return (
-        <div className="bg-black text-white min-h-screen flex items-center justify-center px-4">
-            <div className="w-full max-w-md bg-zinc-900 rounded-2xl shadow-xl p-8 border border-zinc-800">
+        <div className="flex items-center justify-center min-h-[calc(100vh-200px)]">
+            <div className="w-full max-w-md p-8 space-y-6 bg-gray-800 rounded-lg shadow-xl">
+                <h2 className="text-3xl font-bold text-center text-white">
+                    Login - Project Nyan
+                </h2>
 
-                {/* Logo e título */}
-                <div className="flex flex-col items-center mb-8">
-                    <img
-                        src={logo}
-                        alt="Logo"
-                        className="w-20 h-20 rounded-full border-2 border-red-600 mb-4"
-                    />
-                    <h2
-                        className="text-3xl font-extrabold uppercase text-center"
-                        style={{ fontFamily: "Teko, sans-serif" }}
-                    >
-                        Entrar na <span className="text-red-600">Conta</span>
-                    </h2>
-                </div>
+                {error && (
+                    <div className="p-3 text-center text-red-300 bg-red-800 bg-opacity-50 rounded-lg">
+                        {error}
+                    </div>
+                )}
 
-                {/* Formulário */}
-                <form onSubmit={login} className="space-y-6">
+                <form className="space-y-6" onSubmit={handleSubmit}>
                     <div>
-                        <label className="block text-sm mb-1">Email</label>
+                        <label htmlFor="loginOrEmail" className={labelStyle}>
+                            Login ou Email
+                        </label>
                         <input
-                            type="email"
-                            placeholder="Digite seu email"
-                            className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-red-600"
-                            value={email}
-                            onChange={(e) => setEmail(e.target.value)}
+                            id="loginOrEmail"
+                            name="loginOrEmail"
+                            type="text"
                             required
+                            className={inputStyle}
+                            placeholder="seu_login ou seu@email.com"
+                            value={loginOrEmail}
+                            onChange={(e) => setLoginOrEmail(e.target.value)}
                         />
                     </div>
-
                     <div>
-                        <label className="block text-sm mb-1">Senha</label>
+                        <label htmlFor="password" className={labelStyle}>
+                            Senha
+                        </label>
                         <input
+                            id="password"
+                            name="password"
                             type="password"
-                            placeholder="Digite sua senha"
-                            className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-red-600"
+                            required
+                            className={inputStyle}
+                            placeholder="••••••••"
                             value={password}
                             onChange={(e) => setPassword(e.target.value)}
-                            required
                         />
                     </div>
 
-                    <button
-                        type="submit"
-                        className="w-full bg-red-600 hover:bg-red-700 transition text-white font-bold py-2 rounded-xl shadow-lg"
-                    >
-                        Entrar
-                    </button>
+                    <div>
+                        <button
+                            type="submit"
+                            className="w-full px-4 py-3 font-bold text-white bg-cyan-600 rounded-lg hover:bg-cyan-700 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:ring-opacity-50 transition duration-300"
+                        >
+                            Entrar
+                        </button>
+                    </div>
                 </form>
 
-                {/* Extra */}
-                <p className="text-sm text-center text-zinc-400 mt-6">
-                    Não tem uma conta?{" "}
-                    <a
-                        href="/register"
-                        className="text-red-500 hover:underline font-semibold"
-                    >
-                        Criar conta
-                    </a>
+                <p className="text-sm text-center text-gray-400">
+                    Não tem uma conta?{' '}
+                    <Link to="/register" className="font-medium text-cyan-400 hover:underline">
+                        Registre-se
+                    </Link>
                 </p>
             </div>
         </div>
     );
-}
+};
+
+export default Login;

@@ -1,88 +1,142 @@
-import { useState } from "react";
-import axios from "axios";
-import { useNavigate } from "react-router-dom";
-import logo from "../assets/gatoa-logo.jpg";
+import React, { useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import axios from 'axios';
 
-export default function Register() {
-    const [email, setEmail] = useState("");
-    const [password, setPassword] = useState("");
+const Register = () => {
+    const [nome, setNome] = useState('');
+    const [email, setEmail] = useState('');
+    const [login, setLogin] = useState('');
+    const [password, setPassword] = useState('');
+    const [error, setError] = useState('');
+    const [success, setSuccess] = useState('');
     const navigate = useNavigate();
 
-    const register = async (e) => {
+    const handleSubmit = async (e) => {
         e.preventDefault();
+        setError('');
+        setSuccess('');
+
         try {
-            await axios.post("http://localhost:4000/api/register", { email, password });
-            alert("Usuário criado com sucesso!");
-            navigate("/login"); // redireciona para login
+            await axios.post('http://localhost:5001/api/register', {
+                nome,
+                email,
+                login,
+                password,
+            });
+
+            setSuccess('Registro bem-sucedido! Redirecionando para o login...');
+
+            // Espera 2 segundos e redireciona para o login
+            setTimeout(() => {
+                navigate('/login');
+            }, 2000);
+
         } catch (err) {
-            alert("Erro ao registrar. Tente novamente.");
+            console.error('Erro no registro:', err);
+            setError(err.response?.data || 'Erro ao registrar. Verifique os dados.');
         }
     };
 
+    // Estilos (Tailwind)
+    const inputStyle = "w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500";
+    const labelStyle = "block text-sm font-medium text-gray-300 mb-2";
+
     return (
-        <div className="bg-black text-white min-h-screen flex items-center justify-center px-4">
-            <div className="w-full max-w-md bg-zinc-900 rounded-2xl shadow-xl p-8 border border-zinc-800">
+        <div className="flex items-center justify-center min-h-[calc(100vh-200px)]">
+            <div className="w-full max-w-md p-8 space-y-6 bg-gray-800 rounded-lg shadow-xl">
+                <h2 className="text-3xl font-bold text-center text-white">
+                    Criar Conta
+                </h2>
 
-                {/* Logo e título */}
-                <div className="flex flex-col items-center mb-8">
-                    <img
-                        src={logo}
-                        alt="Logo"
-                        className="w-20 h-20 rounded-full border-2 border-red-600 mb-4"
-                    />
-                    <h2
-                        className="text-3xl font-extrabold uppercase text-center"
-                        style={{ fontFamily: "Teko, sans-serif" }}
-                    >
-                        Criar <span className="text-red-600">Conta</span>
-                    </h2>
-                </div>
+                {error && (
+                    <div className="p-3 text-center text-red-300 bg-red-800 bg-opacity-50 rounded-lg">
+                        {error}
+                    </div>
+                )}
+                {success && (
+                    <div className="p-3 text-center text-green-300 bg-green-800 bg-opacity-50 rounded-lg">
+                        {success}
+                    </div>
+                )}
 
-                {/* Formulário */}
-                <form onSubmit={register} className="space-y-6">
+                <form className="space-y-4" onSubmit={handleSubmit}>
                     <div>
-                        <label className="block text-sm mb-1">Email</label>
+                        <label htmlFor="nome" className={labelStyle}>
+                            Nome
+                        </label>
                         <input
+                            id="nome"
+                            type="text"
+                            required
+                            className={inputStyle}
+                            placeholder="Seu Nome Completo"
+                            value={nome}
+                            onChange={(e) => setNome(e.target.value)}
+                        />
+                    </div>
+                    <div>
+                        <label htmlFor="email" className={labelStyle}>
+                            Email
+                        </label>
+                        <input
+                            id="email"
                             type="email"
-                            placeholder="Digite seu email"
-                            className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-red-600"
+                            required
+                            className={inputStyle}
+                            placeholder="seu@email.com"
                             value={email}
                             onChange={(e) => setEmail(e.target.value)}
+                        />
+                    </div>
+                    <div>
+                        <label htmlFor="login" className={labelStyle}>
+                            Login (Apelido)
+                        </label>
+                        <input
+                            id="login"
+                            type="text"
                             required
+                            className={inputStyle}
+                            placeholder="seu_login_unico"
+                            value={login}
+                            onChange={(e) => setLogin(e.target.value)}
+                        />
+                    </div>
+                    <div>
+                        <label htmlFor="password" className={labelStyle}>
+                            Senha
+                        </label>
+                        <input
+                            id="password"
+                            type="password"
+                            required
+                            className={inputStyle}
+                            placeholder="•••••••• (mín. 6 caracteres)"
+                            minLength={6}
+                            value={password}
+                            onChange={(e) => setPassword(e.target.value)}
                         />
                     </div>
 
                     <div>
-                        <label className="block text-sm mb-1">Senha</label>
-                        <input
-                            type="password"
-                            placeholder="Digite sua senha"
-                            className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-red-600"
-                            value={password}
-                            onChange={(e) => setPassword(e.target.value)}
-                            required
-                        />
+                        <button
+                            type="submit"
+                            className="w-full mt-2 px-4 py-3 font-bold text-white bg-cyan-600 rounded-lg hover:bg-cyan-700 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:ring-opacity-50 transition duration-300"
+                        >
+                            Registrar
+                        </button>
                     </div>
-
-                    <button
-                        type="submit"
-                        className="w-full bg-red-600 hover:bg-red-700 transition text-white font-bold py-2 rounded-xl shadow-lg"
-                    >
-                        Registrar
-                    </button>
                 </form>
 
-                {/* Extra */}
-                <p className="text-sm text-center text-zinc-400 mt-6">
-                    Já tem uma conta?{" "}
-                    <a
-                        href="/login"
-                        className="text-red-500 hover:underline font-semibold"
-                    >
-                        Entrar
-                    </a>
+                <p className="text-sm text-center text-gray-400">
+                    Já tem uma conta?{' '}
+                    <Link to="/login" className="font-medium text-cyan-400 hover:underline">
+                        Faça login
+                    </Link>
                 </p>
             </div>
         </div>
     );
-}
+};
+
+export default Register;
