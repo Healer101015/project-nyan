@@ -37,8 +37,8 @@ const Register = () => {
         }
     };
 
-    // Estilos (Tailwind)
-    const inputStyle = "w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500";
+    // Estilos (Tailwind) - ATUALIZADO (Roxo)
+    const inputStyle = "w-full px-4 py-3 bg-gray-900 border border-gray-700 rounded-lg text-gray-200 focus:outline-none focus:ring-2 focus:ring-purple-500";
     const labelStyle = "block text-sm font-medium text-gray-300 mb-2";
 
     return (
@@ -121,7 +121,7 @@ const Register = () => {
                     <div>
                         <button
                             type="submit"
-                            className="w-full mt-2 px-4 py-3 font-bold text-white bg-cyan-600 rounded-lg hover:bg-cyan-700 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:ring-opacity-50 transition duration-300"
+                            className="w-full mt-2 px-4 py-3 font-bold text-white bg-purple-600 rounded-lg hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-opacity-50 transition duration-300"
                         >
                             Registrar
                         </button>
@@ -130,7 +130,7 @@ const Register = () => {
 
                 <p className="text-sm text-center text-gray-400">
                     Já tem uma conta?{' '}
-                    <Link to="/login" className="font-medium text-cyan-400 hover:underline">
+                    <Link to="/login" className="font-medium text-purple-400 hover:underline">
                         Faça login
                     </Link>
                 </p>
